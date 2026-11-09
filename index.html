@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Bilancio</title>
+<meta name="theme-color" content="#0f6b5c">
+<meta name="apple-mobile-web-app-title" content="Bilancio">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.png">
+<style>
+:root{--bg:#f1f4f3;--card:#fff;--tx:#14211f;--mut:#62706d;--ln:#dde4e2;--ac:#0f6b5c;--acx:#fff;--in:#0f7a55;--out:#c2410c;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1514;--card:#16201f;--tx:#e8f0ee;--mut:#8fa09c;--ln:#25322f;--ac:#4cc2a8;--acx:#06201a;--in:#4cc99a;--out:#ff9466;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0d1514;--card:#16201f;--tx:#e8f0ee;--mut:#8fa09c;--ln:#25322f;--ac:#4cc2a8;--acx:#06201a;--in:#4cc99a;--out:#ff9466;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+[hidden]{display:none!important}
+#app{max-width:560px;margin:0 auto;padding:16px 16px 150px}
+h2{font-size:1.25rem;margin:4px 0 14px}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:14px;margin-bottom:12px}
+.card h3{margin:0 0 8px;font-size:1rem}
+.r{display:flex;justify-content:space-between;gap:12px;padding:5px 0}
+.mut{color:var(--mut);font-size:.9rem}
+.in{color:var(--in)}.out{color:var(--out)}
+.hero{padding:20px 16px}
+.hero .big{font-size:2.4rem;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.mh{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.mh b{text-transform:capitalize;font-size:1.1rem}
+button{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--ln);border-radius:10px;padding:10px 14px;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.pri{background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:600}
+.lnk{border:0;background:none;padding:2px 0;color:var(--mut);font-size:.85rem;text-decoration:underline}
+.mv{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.mv>div:last-child{text-align:right}
+label{display:block;margin-bottom:12px;font-size:.9rem;color:var(--mut)}
+input,select,textarea{display:block;width:100%;margin-top:4px;font:inherit;font-size:16px;color:var(--tx);background:var(--card);border:1px solid var(--ln);border-radius:10px;padding:10px}
+.seg{display:flex;gap:6px;margin-bottom:14px}
+.seg button{flex:1;padding:10px 4px}
+.seg button.on{background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:600}
+.btns{display:flex;gap:8px}.btns button{flex:1}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--ln);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));z-index:5}
+nav button{flex:1;border:0;background:none;padding:10px 4px;color:var(--mut)}
+nav button.on{color:var(--ac);font-weight:700}
+#fab{position:fixed;right:16px;bottom:calc(72px + env(safe-area-inset-bottom,0px));width:56px;height:56px;border-radius:28px;font-size:2rem;line-height:1;padding:0;background:var(--ac);color:var(--acx);border-color:var(--ac);z-index:6}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<button id="fab" onclick="vai('add')" aria-label="Nuovo movimento">+</button>
+<nav id="nav"></nav>
+<script>
+const KEY='bilancio.v1';
+let S={conti:['Contanti','Banca'],mov:[]};
+try{const r=localStorage.getItem(KEY);if(r)S=JSON.parse(r)}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const eur=n=>new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'}).format(n);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const key=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+const shift=(d,n)=>new Date(d.getFullYear(),d.getMonth()+n,1);
+const fmtData=s=>s.split('-').reverse().join('/');
+let view='riep',pend=null,F={tipo:'out'};
+let mese=new Date();mese=new Date(mese.getFullYear(),mese.getMonth(),1);
+
+function saldo(c){return S.mov.reduce((s,m)=>{
+  if(m.tipo==='in'&&m.conto===c)return s+m.imp;
+  if(m.tipo==='out'&&m.conto===c)return s-m.imp;
+  if(m.tipo==='tr'){if(m.conto===c)s-=m.imp;if(m.dest===c)s+=m.imp}
+  return s},0)}
+function tot(k){const r={in:0,out:0,fonti:{},cat:{}};
+  S.mov.filter(m=>m.data.startsWith(k)).forEach(m=>{
+    const n=m.cat||'Altro';
+    if(m.tipo==='in'){r.in+=m.imp;r.fonti[n]=(r.fonti[n]||0)+m.imp}
+    if(m.tipo==='out'){r.out+=m.imp;r.cat[n]=(r.cat[n]||0)+m.imp}
+  });return r}
+function media(){const v=[];
+  for(let i=1;i<=3;i++){const k=key(shift(mese,-i));if(S.mov.some(m=>m.data.startsWith(k)))v.push(tot(k).in)}
+  return v.length?{avg:v.reduce((a,b)=>a+b,0)/v.length,n:v.length}:null}
+const rows=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]).map(([n,v])=>`<div class="r"><span>${esc(n)}</span><b>${eur(v)}</b></div>`).join('')||'<p class="mut">Nessun dato in questo mese.</p>';
+const mh=()=>`<div class="mh"><button onclick="mm(-1)" aria-label="Mese precedente">‹</button><b>${mese.toLocaleDateString('it-IT',{month:'long',year:'numeric'})}</b><button onclick="mm(1)" aria-label="Mese successivo">›</button></div>`;
+
+function riepView(){
+  const k=key(mese),t=tot(k),md=media();
+  const tutti=S.conti.reduce((s,c)=>s+saldo(c),0);
+  const net=t.in-t.out;
+  return `<div class="card hero"><div class="mut">Liquidità totale</div><div class="big">${eur(tutti)}</div>
+  <div class="mut">${S.conti.map(c=>esc(c)+' '+eur(saldo(c))).join(', ')}</div></div>
+  ${mh()}
+  <div class="card"><div class="r"><span>Entrate</span><b class="in">${eur(t.in)}</b></div>
+  <div class="r"><span>Uscite</span><b class="out">${eur(t.out)}</b></div>
+  <div class="r"><span>Netto del mese</span><b class="${net<0?'out':'in'}">${eur(net)}</b></div></div>
+  <div class="card"><h3>Media delle entrate</h3>${md?`<div class="big" style="font-size:1.6rem;font-weight:700">${eur(md.avg)}</div><p class="mut" style="margin:4px 0 0">Calcolata sui ${md.n} mesi precedenti con movimenti. Usala come riferimento per decidere quanto spendere.</p>`:'<p class="mut">Comparirà quando avrai movimenti nei mesi precedenti.</p>'}</div>
+  <div class="card"><h3>Entrate per fonte</h3>${rows(t.fonti)}</div>
+  <div class="card"><h3>Uscite per categoria</h3>${rows(t.cat)}</div>`}
+
+function movView(){
+  const k=key(mese);
+  const l=S.mov.filter(m=>m.data.startsWith(k)).sort((a,b)=>b.data.localeCompare(a.data)||b.id-a.id);
+  return mh()+(l.length?l.map(m=>{
+    const cl=m.tipo==='in'?'in':m.tipo==='out'?'out':'';
+    const sg=m.tipo==='in'?'+':m.tipo==='out'?'−':'';
+    const t=m.tipo==='tr'?`Da ${esc(m.conto)} a ${esc(m.dest)}`:esc(m.cat||'Altro');
+    const sub=fmtData(m.data)+(m.tipo==='tr'?'':', '+esc(m.conto))+(m.nota?', '+esc(m.nota):'');
+    return `<div class="card mv"><div><b>${t}</b><div class="mut">${sub}</div></div><div><b class="${cl}">${sg}${eur(m.imp)}</b><br><button class="lnk" onclick="del(${m.id})">${pend===m.id?'Conferma eliminazione':'Elimina'}</button></div></div>`}).join(''):'<div class="card mut">Nessun movimento in questo mese. Tocca + per aggiungerne uno.</div>')}
+
+function contiView(){
+  return `<h2>Conti</h2><div class="card">${S.conti.map(c=>`<div class="r"><span>${esc(c)}</span><b>${eur(saldo(c))}</b></div>`).join('')}</div>
+  <div class="card"><h3>Aggiungi un conto</h3><input id="nc" placeholder="Per esempio PayPal"><div class="btns" style="margin-top:8px"><button class="pri" onclick="addConto()">Aggiungi conto</button></div></div>
+  <div class="card"><h3>Backup dei dati</h3><p class="mut" style="margin-top:0">I dati restano su questo dispositivo. Genera il backup, copialo e conservalo. Per ripristinare, incolla il testo e tocca Ripristina.</p>
+  <textarea id="bk" rows="4"></textarea><div class="btns" style="margin-top:8px"><button onclick="bkGen()">Genera backup</button><button onclick="bkRip()">Ripristina</button></div><p id="bm" class="mut"></p></div>`}
+
+function addView(){
+  const opt=S.conti.map(c=>`<option>${esc(c)}</option>`).join('');
+  const cats=[...new Set([...S.mov.map(m=>m.cat).filter(Boolean),'Lavoro','Regali','Cibo','Trasporti','Svago','Altro'])];
+  const oggi=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+  return `<h2>Nuovo movimento</h2>
+  <div class="seg"><button id="t-out" onclick="setT('out')">Uscita</button><button id="t-in" onclick="setT('in')">Entrata</button><button id="t-tr" onclick="setT('tr')">Trasferimento</button></div>
+  <label>Importo in euro<input id="imp" inputmode="decimal" placeholder="0,00" autocomplete="off"></label>
+  <label>Data<input id="dt" type="date" value="${oggi}"></label>
+  <label><span id="lc">Conto</span><select id="cn">${opt}</select></label>
+  <label id="wd">Verso il conto<select id="ds">${opt}</select></label>
+  <label id="wc"><span id="lcat">Categoria</span><input id="cat" list="cl" autocomplete="off"></label>
+  <datalist id="cl">${cats.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+  <label>Nota (facoltativa)<input id="nt" autocomplete="off"></label>
+  <p id="err" class="out" role="alert"></p>
+  <div class="btns"><button onclick="vai('mov')">Annulla</button><button class="pri" onclick="salva()">Salva movimento</button></div>`}
+
+function setT(t){F.tipo=t;
+  ['out','in','tr'].forEach(x=>document.getElementById('t-'+x).classList.toggle('on',x===t));
+  document.getElementById('wd').hidden=t!=='tr';
+  document.getElementById('wc').hidden=t==='tr';
+  document.getElementById('lc').textContent=t==='tr'?'Dal conto':'Conto';
+  document.getElementById('lcat').textContent=t==='in'?'Fonte':'Categoria'}
+function salva(){
+  const g=id=>document.getElementById(id).value;
+  const imp=parseFloat(g('imp').replace(',','.'));
+  const er=document.getElementById('err');
+  if(!(imp>0)){er.textContent='Inserisci un importo maggiore di zero.';return}
+  if(!g('dt')){er.textContent='Scegli una data.';return}
+  const m={id:Date.now(),tipo:F.tipo,imp:Math.round(imp*100)/100,data:g('dt'),conto:g('cn'),dest:g('ds'),cat:g('cat').trim(),nota:g('nt').trim()};
+  if(m.tipo==='tr'&&m.dest===m.conto){er.textContent='Scegli due conti diversi.';return}
+  S.mov.push(m);save();
+  const p=m.data.split('-');mese=new Date(+p[0],+p[1]-1,1);
+  vai('mov')}
+function del(id){if(pend===id){S.mov=S.mov.filter(m=>m.id!==id);pend=null;save()}else pend=id;draw()}
+function addConto(){const n=document.getElementById('nc').value.trim();
+  if(n&&!S.conti.includes(n)){S.conti.push(n);save()}draw()}
+function bkGen(){const a=document.getElementById('bk'),b=document.getElementById('bm');
+  a.value=JSON.stringify(S);a.select();
+  try{navigator.clipboard.writeText(a.value).then(()=>b.textContent='Backup copiato negli appunti.',()=>b.textContent='Copia a mano il testo qui sopra.')}catch(e){b.textContent='Copia a mano il testo qui sopra.'}}
+function bkRip(){const b=document.getElementById('bm');
+  try{const d=JSON.parse(document.getElementById('bk').value);
+    if(!Array.isArray(d.mov)||!Array.isArray(d.conti))throw 0;
+    S=d;save();draw()}catch(e){b.textContent='Il testo incollato non è un backup valido.'}}
+function mm(n){mese=shift(mese,n);pend=null;draw()}
+function vai(v){view=v;pend=null;if(v==='add')F.tipo='out';draw();window.scrollTo(0,0)}
+function draw(){
+  const a=document.getElementById('app');
+  a.innerHTML=view==='add'?addView():view==='mov'?movView():view==='conti'?contiView():riepView();
+  if(view==='add')setT(F.tipo);
+  document.getElementById('nav').hidden=view==='add';
+  document.getElementById('fab').hidden=view==='add';
+  document.getElementById('nav').innerHTML=[['riep','Riepilogo'],['mov','Movimenti'],['conti','Conti']].map(([v,l])=>`<button class="${view===v?'on':''}" onclick="vai('${v}')">${l}</button>`).join('')}
+draw();
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
